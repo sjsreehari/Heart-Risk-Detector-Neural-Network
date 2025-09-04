@@ -158,5 +158,5 @@ class HeartRiskNN:
                         break
 
     def predict(self, X):
-        probs = self.forward(X)
+        probs = self.forward(X, training=False)
         return (probs > 0.5).astype(int)
