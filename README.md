@@ -103,8 +103,3 @@ Validation Accuracy: ~0.85
 Test Accuracy: ~0.89
 ```
 
-## Reproducibility
-We set `seed=42` for data split and NumPy RNG used by dropout.
-
-## Notes
-- Adjust `numeric_cols`/`categorical_cols` in `main.py` if your CSV schema differs.
