@@ -1,11 +1,14 @@
 import pandas as pd
 import numpy as np
 from nn.model import HeartRiskNN
+import os 
 
 # -------------------------
 # Load dataset
 # -------------------------
-file_path = r"C:\Users\Sreehari S J\Desktop\AI Projects\Heart_Risk_Dectector_NN\data\heart_data.csv"
+
+
+file_path = os.path.join("data", "heart_data.csv")
 data = pd.read_csv(file_path)
 
 # -------------------------
@@ -20,7 +23,8 @@ rng = np.random.default_rng(seed)
 indices = np.arange(len(data))
 rng.shuffle(indices)
 
-# 70/15/15 split
+
+ 
 n_total = len(indices)
 n_train = int(0.7 * n_total)
 n_val = int(0.15 * n_total)
