@@ -1,59 +1,99 @@
 import numpy as np
-from nn.layers import forward_layer, backward_layer
-from nn.utils import compute_loss, accuracy
 
+# -------------------------
+# Activation functions
+# -------------------------
+def sigmoid(x):
+    return 1 / (1 + np.exp(-x))
+
+def sigmoid_derivative(x):
+    s = sigmoid(x)
+    return s * (1 - s)
+
+def relu(x):
+    return np.maximum(0, x)
+
+def relu_derivative(x):
+    return (x > 0).astype(float)
+
+# -------------------------
+# Neural Network class
+# -------------------------
 class HeartRiskNN:
-    def __init__(self, input_size, hidden_sizes=[8,6,4], output_size=1, lr=0.01):
+    def __init__(self, input_size, hidden_sizes=[32,16], output_size=1, lr=0.01):
         self.lr = lr
-        self.sizes = [input_size] + hidden_sizes + [output_size]
-        np.random.seed(42)
-        
-        # Initialize weights and biases
-        self.params = {}
-        for i in range(len(self.sizes)-1):
-            self.params[f"W{i+1}"] = np.random.randn(self.sizes[i], self.sizes[i+1]) * 0.01
-            self.params[f"b{i+1}"] = np.zeros((1, self.sizes[i+1]))
+        self.input_size = input_size
+        self.hidden_sizes = hidden_sizes
+        self.output_size = output_size
+
+        # Xavier initialization
+        self.W1 = np.random.randn(input_size, hidden_sizes[0]) * np.sqrt(2 / input_size)
+        self.b1 = np.zeros((1, hidden_sizes[0]))
+        self.W2 = np.random.randn(hidden_sizes[0], hidden_sizes[1]) * np.sqrt(2 / hidden_sizes[0])
+        self.b2 = np.zeros((1, hidden_sizes[1]))
+        self.W3 = np.random.randn(hidden_sizes[1], output_size) * np.sqrt(2 / hidden_sizes[1])
+        self.b3 = np.zeros((1, output_size))
 
     def forward(self, X):
-        cache = {"A0": X}
-        L = len(self.sizes)-1
-        A_prev = X
-        for l in range(1, L+1):
-            activation = "sigmoid" if l==L else "relu"
-            Z, A = forward_layer(A_prev, self.params[f"W{l}"], self.params[f"b{l}"], activation)
-            cache[f"Z{l}"] = Z
-            cache[f"A{l}"] = A
-            A_prev = A
-        return A_prev, cache
+        self.Z1 = X @ self.W1 + self.b1
+        self.A1 = relu(self.Z1)
 
-    def backward(self, y, cache):
-        grads = {}
-        L = len(self.sizes)-1
-        dA = cache[f"A{L}"] - y
-        
-        for l in reversed(range(1, L+1)):
-            activation = "sigmoid" if l==L else "relu"
-            dA, dW, db = backward_layer(dA, cache[f"Z{l}"], cache[f"A{l-1}"], self.params[f"W{l}"], activation)
-            grads[f"dW{l}"] = dW
-            grads[f"db{l}"] = db
-        return grads
+        self.Z2 = self.A1 @ self.W2 + self.b2
+        self.A2 = relu(self.Z2)
 
-    def update_params(self, grads):
-        L = len(self.sizes)-1
-        for l in range(1, L+1):
-            self.params[f"W{l}"] -= self.lr * grads[f"dW{l}"]
-            self.params[f"b{l}"] -= self.lr * grads[f"db{l}"]
+        self.Z3 = self.A2 @ self.W3 + self.b3
+        self.A3 = sigmoid(self.Z3)
 
-    def train(self, X, y, epochs=1000):
-        for i in range(epochs):
-            y_hat, cache = self.forward(X)
-            loss = compute_loss(y, y_hat)
-            grads = self.backward(y, cache)
-            self.update_params(grads)
-            if i % 100 == 0:
-                acc = accuracy(y, y_hat)
-                print(f"Epoch {i}: Loss={loss:.4f}, Accuracy={acc:.2f}")
+        return self.A3
+
+    def compute_loss(self, y_true, y_pred):
+        eps = 1e-8
+        loss = -np.mean(y_true*np.log(y_pred+eps) + (1-y_true)*np.log(1-y_pred+eps))
+        return loss
+
+    def backward(self, X, y_true, y_pred):
+        m = X.shape[0]
+        dZ3 = y_pred - y_true
+        dW3 = self.A2.T @ dZ3 / m
+        db3 = np.sum(dZ3, axis=0, keepdims=True) / m
+
+        dA2 = dZ3 @ self.W3.T
+        dZ2 = dA2 * relu_derivative(self.Z2)
+        dW2 = self.A1.T @ dZ2 / m
+        db2 = np.sum(dZ2, axis=0, keepdims=True) / m
+
+        dA1 = dZ2 @ self.W2.T
+        dZ1 = dA1 * relu_derivative(self.Z1)
+        dW1 = X.T @ dZ1 / m
+        db1 = np.sum(dZ1, axis=0, keepdims=True) / m
+
+        # Update weights
+        self.W3 -= self.lr * dW3
+        self.b3 -= self.lr * db3
+        self.W2 -= self.lr * dW2
+        self.b2 -= self.lr * db2
+        self.W1 -= self.lr * dW1
+        self.b1 -= self.lr * db1
+
+    def train(self, X, y, epochs=2000, batch_size=32):
+        for epoch in range(epochs):
+            # Mini-batch gradient descent
+            perm = np.random.permutation(X.shape[0])
+            X_shuffled = X[perm]
+            y_shuffled = y[perm]
+
+            for i in range(0, X.shape[0], batch_size):
+                X_batch = X_shuffled[i:i+batch_size]
+                y_batch = y_shuffled[i:i+batch_size]
+                y_pred = self.forward(X_batch)
+                self.backward(X_batch, y_batch, y_pred)
+
+            if epoch % 100 == 0:
+                y_pred_all = self.forward(X)
+                loss = self.compute_loss(y, y_pred_all)
+                acc = ((y_pred_all>0.5)==y).mean()
+                print(f"Epoch {epoch}: Loss={loss:.4f}, Accuracy={acc:.2f}")
 
     def predict(self, X):
-        y_hat, _ = self.forward(X)
-        return (y_hat > 0.5).astype(int)
+        probs = self.forward(X)
+        return (probs > 0.5).astype(int)
